@@ -28,15 +28,30 @@ namespace UnityDarkThemePatch
             0x5b,
             0xc3,
         };
+        public readonly byte[] RegionBytesNew ={
+            0x04, 0x33, 0xC0, 0xEB, 0x02, 0x8B, 0x07
+        };
         // offset from start of region to the actual instruction
         public readonly int JumpInstructionOffset = 16;
-        public readonly byte DarkSkinByte = 0x74;
-        public readonly byte LightSkinByte = 0x75;
+        public byte DarkSkinByte = 0x74;   // Removed readonly state as these are swapped for new versions
+        public byte LightSkinByte = 0x75;  // 
 
         public void Init()
         {
             UnityExecutablePath = GetUnityExecutablePath();
             PatchableByteAddress = FindJumpInstructionAddress(UnityExecutablePath, RegionBytes, JumpInstructionOffset);
+
+            // New version
+            if (PatchableByteAddress == -1)
+            {
+                PatchableByteAddress = FindJumpInstructionAddressNew(UnityExecutablePath, RegionBytesNew);
+
+                // Swap bytes for new version
+                byte temp = DarkSkinByte;
+                DarkSkinByte = LightSkinByte;
+                LightSkinByte = temp;
+            }
+
             PatchableByteValue = GetPatchableByteValue();
             if (PatchableByteValue == DarkSkinByte)
                 YesNoChoice("Revert to light skin?", () => PatchExecutable(LightSkinByte));
@@ -108,9 +123,9 @@ namespace UnityDarkThemePatch
         {
             Write("Patch status: ");
             var jumpInstructionByte = ReadByteAtAddress(UnityExecutablePath, PatchableByteAddress);
-            if (jumpInstructionByte == 0x75)
+            if (jumpInstructionByte == LightSkinByte)
                 WriteLine($"Light skin (unpatched) [0x{jumpInstructionByte:X} @ 0x{PatchableByteAddress:X}]", ConsoleColor.Blue);
-            else if (jumpInstructionByte == 0x74)
+            else if (jumpInstructionByte == DarkSkinByte)
                 WriteLine($"Dark skin (patched) [0x{jumpInstructionByte:X} @ 0x{PatchableByteAddress:X}]", ConsoleColor.Green);
             else
             {
@@ -157,6 +172,32 @@ namespace UnityDarkThemePatch
 
                     if (index >= regionToFind.LongLength)
                         return firstAddr + jumpInstructionOffset;
+                }
+            }
+
+            return -1;
+        }
+        public static long FindJumpInstructionAddressNew(string filePath, byte[] regionToFind)
+        {
+            using (var b = new BinaryReader(File.Open(filePath, FileMode.Open)))
+            {
+                var length = b.BaseStream.Length;
+                long index = 0;
+                long firstAddr = -1;
+                for (long i = 0; i < length; i++)
+                {
+                    var currentByte = b.ReadByte();
+                    if (currentByte == regionToFind[index])
+                    {
+                        if (index == 0)
+                            firstAddr = i;
+                        index++;
+                    }
+                    else
+                        index = 0;
+
+                    if (index >= regionToFind.LongLength)
+                        return --firstAddr;
                 }
             }
 
